@@ -10,13 +10,20 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: tracking
+    description: Public order lookup
+  - name: authentication
+    description: Private administrator session
+  - name: orders
+    description: Order management
+  - name: storage
+    description: Product image uploads
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,330 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /public/track:
+    post:
+      operationId: trackOrder
+      tags: [tracking]
+      summary: Find an order using its tracking ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackOrderInput"
+      responses:
+        "200":
+          description: Customer-safe order information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingOrder"
+        "404":
+          description: No order was found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many tracking attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/session:
+    get:
+      operationId: getAdminSession
+      tags: [authentication]
+      summary: Check whether the current browser has an administrator session
+      responses:
+        "200":
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+  /admin/login:
+    post:
+      operationId: adminLogin
+      tags: [authentication]
+      summary: Sign in with the configured administrator username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Temporarily locked after repeated failed attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/logout:
+    post:
+      operationId: adminLogout
+      tags: [authentication]
+      summary: End the administrator session
+      responses:
+        "204":
+          description: Signed out
+  /admin/dashboard:
+    get:
+      operationId: getAdminDashboard
+      tags: [orders]
+      summary: Get live order counts and delivered sales total
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/orders:
+    get:
+      operationId: listAdminOrders
+      tags: [orders]
+      summary: Search and filter orders
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+      responses:
+        "200":
+          description: Matching orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrderList"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createAdminOrder
+      tags: [orders]
+      summary: Create a complete order and generate its tracking ID on the server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderInput"
+      responses:
+        "201":
+          description: Order saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrder"
+        "400":
+          description: Invalid order data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/orders/tracking-id:
+    get:
+      operationId: getNewTrackingId
+      tags: [orders]
+      summary: Generate an available tracking ID for a new order form
+      responses:
+        "200":
+          description: New tracking ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingIdResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/orders/{trackingId}:
+    parameters:
+      - in: path
+        name: trackingId
+        required: true
+        schema:
+          type: string
+          pattern: "^T-BEE-[A-Z]{4}[0-9]{3}$"
+    get:
+      operationId: getAdminOrder
+      tags: [orders]
+      summary: Get private order details
+      responses:
+        "200":
+          description: Full order record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrder"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAdminOrder
+      tags: [orders]
+      summary: Update order details and recalculate all totals on the server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderInput"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrder"
+        "400":
+          description: Invalid order data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAdminOrder
+      tags: [orders]
+      summary: Archive an order without reusing its tracking ID
+      responses:
+        "204":
+          description: Order archived
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/orders/{trackingId}/status:
+    parameters:
+      - in: path
+        name: trackingId
+        required: true
+        schema:
+          type: string
+          pattern: "^T-BEE-[A-Z]{4}[0-9]{3}$"
+    patch:
+      operationId: updateAdminOrderStatus
+      tags: [orders]
+      summary: Change an order status and record its timestamp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusInput"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrder"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /storage/uploads/request-url:
+    post:
+      operationId: requestOrderImageUpload
+      tags: [storage]
+      summary: Request a short-lived upload URL for an order product image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestOrderImageUploadInput"
+      responses:
+        "200":
+          description: Upload URL and object path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageUploadResult"
+        "400":
+          description: Unsupported image type or size
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -31,6 +362,333 @@ components:
       properties:
         status:
           type: string
+      required: [status]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        retryAfterSeconds:
+          type: ["integer", "null"]
+      required: [error]
+    OrderStatus:
+      type: string
+      enum:
+        - pending
+        - verified
+        - processing
+        - ready_for_dispatch
+        - out_for_delivery
+        - delivered
+        - cancelled
+    DeliveryOption:
+      type: string
+      enum: [birtamode, outside_birtamode]
+    TrackOrderInput:
+      type: object
+      properties:
+        trackingId:
+          type: string
+          pattern: "^T-BEE-[A-Z]{4}[0-9]{3}$"
+      required: [trackingId]
+    AdminLoginInput:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 80
+        password:
+          type: string
+          minLength: 1
+          maxLength: 256
+      required: [username, password]
+    AdminSession:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+        username:
+          type: ["string", "null"]
+      required: [authenticated, username]
+    ProductInput:
+      type: object
+      properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 180
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 999
+        unitPrice:
+          type: number
+          minimum: 0
+        imagePath:
+          type: ["string", "null"]
+          maxLength: 1000
+      required: [productName, quantity, unitPrice]
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        lineSubtotal:
+          type: number
+        imageUrl:
+          type: ["string", "null"]
+      required: [id, productName, quantity, unitPrice, lineSubtotal, imageUrl]
+    StatusEvent:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        updatedAt:
+          type: string
+          format: date-time
+      required: [status, updatedAt]
+    DeliveryContact:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        whatsappUrl:
+          type: string
+          format: uri
+      required: [name, phone, whatsappUrl]
+    TrackingOrder:
+      type: object
+      properties:
+        trackingId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        customerName:
+          type: string
+        deliveryAddress:
+          type: string
+        landmark:
+          type: ["string", "null"]
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        productSubtotal:
+          type: number
+        deliveryOption:
+          $ref: "#/components/schemas/DeliveryOption"
+        deliveryCharge:
+          type: number
+        discountAmount:
+          type: number
+        finalTotal:
+          type: number
+        statusHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusEvent"
+        deliveryMessage:
+          type: ["string", "null"]
+        deliveryMessageUpdatedAt:
+          type: ["string", "null"]
+          format: date-time
+        deliveryContacts:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/DeliveryContact"
       required:
+        - trackingId
+        - createdAt
+        - customerName
+        - deliveryAddress
+        - landmark
         - status
+        - items
+        - productSubtotal
+        - deliveryOption
+        - deliveryCharge
+        - discountAmount
+        - finalTotal
+        - statusHistory
+        - deliveryMessage
+        - deliveryMessageUpdatedAt
+        - deliveryContacts
+    AdminOrder:
+      allOf:
+        - $ref: "#/components/schemas/TrackingOrder"
+        - type: object
+          properties:
+            customerPhone:
+              type: string
+            archivedAt:
+              type: ["string", "null"]
+              format: date-time
+          required: [customerPhone, archivedAt]
+    AdminOrderSummary:
+      type: object
+      properties:
+        trackingId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        customerName:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        finalTotal:
+          type: number
+        itemCount:
+          type: integer
+      required: [trackingId, createdAt, customerName, status, finalTotal, itemCount]
+    AdminOrderList:
+      type: array
+      items:
+        $ref: "#/components/schemas/AdminOrderSummary"
+    DashboardSummary:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        pending:
+          type: integer
+        processing:
+          type: integer
+        outForDelivery:
+          type: integer
+        delivered:
+          type: integer
+        cancelled:
+          type: integer
+        deliveredSales:
+          type: number
+      required:
+        - totalOrders
+        - pending
+        - processing
+        - outForDelivery
+        - delivered
+        - cancelled
+        - deliveredSales
+    TrackingIdResponse:
+      type: object
+      properties:
+        trackingId:
+          type: string
+          pattern: "^T-BEE-[A-Z]{4}[0-9]{3}$"
+      required: [trackingId]
+    CreateOrderInput:
+      type: object
+      properties:
+        customerName:
+          type: string
+          minLength: 1
+          maxLength: 140
+        customerPhone:
+          type: string
+          minLength: 7
+          maxLength: 32
+        deliveryAddress:
+          type: string
+          minLength: 1
+          maxLength: 600
+        landmark:
+          type: string
+          maxLength: 240
+        items:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/ProductInput"
+        deliveryOption:
+          $ref: "#/components/schemas/DeliveryOption"
+        discountAmount:
+          type: number
+          minimum: 0
+        deliveryMessage:
+          type: string
+          maxLength: 2000
+      required:
+        - customerName
+        - customerPhone
+        - deliveryAddress
+        - items
+        - deliveryOption
+        - discountAmount
+    UpdateOrderInput:
+      type: object
+      properties:
+        customerName:
+          type: string
+          minLength: 1
+          maxLength: 140
+        customerPhone:
+          type: string
+          minLength: 7
+          maxLength: 32
+        deliveryAddress:
+          type: string
+          minLength: 1
+          maxLength: 600
+        landmark:
+          type: ["string", "null"]
+          maxLength: 240
+        items:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: "#/components/schemas/ProductInput"
+        deliveryOption:
+          $ref: "#/components/schemas/DeliveryOption"
+        discountAmount:
+          type: number
+          minimum: 0
+        deliveryMessage:
+          type: ["string", "null"]
+          maxLength: 2000
+      minProperties: 1
+    UpdateOrderStatusInput:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+      required: [status]
+    RequestOrderImageUploadInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        size:
+          type: integer
+          minimum: 1
+          maximum: 5242880
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+      required: [name, size, contentType]
+    ImageUploadResult:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+      required: [uploadURL, objectPath]
 

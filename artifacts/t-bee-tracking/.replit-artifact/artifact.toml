@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "T-Bee Order Tracking"
+description = "A public order-tracking experience and protected order-management workspace for T-Bee Clothing, with secure customer order creation, live delivery updates, and downloadable invoices."
+version = "1.0.0"
+id = "artifacts/t-bee-tracking"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19298
+
+[services.development]
+run = "pnpm --filter @workspace/t-bee-tracking run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/t-bee-tracking", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/t-bee-tracking/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19298"
+BASE_PATH = "/"
