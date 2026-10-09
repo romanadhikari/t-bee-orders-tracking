@@ -1,0 +1,116 @@
+# T-BEE CLOTHING — UPDATE 4 FEATURES
+
+Update the existing T-Bee Clothing website. **Do not rebuild the website or remove any existing features.** Keep the current branding, honey-yellow `#FFC400` and deep-black `#111111` color palette, and premium, responsive design.
+
+## 1. Improve the Order Tracking Timeline
+
+Display all 7 order-tracking stages on the customer tracking page:
+
+**Stage 1 — Order Placed**
+Your order has been successfully received by T-Bee.
+
+**Stage 2 — Order Verification**
+We are checking your order and confirming the details.
+
+**Stage 3 — Order Confirmed**
+Your order has been confirmed and is ready for preparation.
+
+**Stage 4 — Preparing Your Order**
+Your T-shirt is being prepared and packed.
+
+**Stage 5 — Shipped**
+Your order has been handed over for delivery.
+
+**Stage 6 — Out for Delivery**
+Your order is on its way to your doorstep. The delivery person's phone number becomes visible at this stage.
+
+**Stage 7 — Delivered**
+Your order has been successfully delivered. It moves to completed orders in the admin panel.
+
+### Timeline design and functionality
+
+* Display all 7 stages in the correct order, including completed, current, and upcoming stages.
+* Show a clear checkmark on every completed stage, with a smooth, attractive checkmark animation when a stage becomes completed.
+* Highlight the current stage using T-Bee's honey-yellow accent, a clear status label, and a subtle animation.
+* Show upcoming stages in a muted style while keeping their titles and descriptions fully visible.
+* Connect the stages using a progress line that fills as the order progresses.
+* Display each stage's description, status, and completion date/time where available.
+* Make the timeline premium, clean, easy to understand, and optimized for mobile screens. On small devices, use a beautiful vertical timeline rather than a cramped horizontal layout.
+* The timeline must update automatically whenever the admin changes the order status. Do not use hardcoded or fake progress.
+
+## 2. Replace WhatsApp Delivery Contact with Direct Calling
+
+When an order reaches **Out for Delivery**, display the delivery contact section.
+
+* Primary delivery contact: **+977 9825933188**
+* Replace the existing WhatsApp contact button with a **Call Delivery Person** button.
+* Use the direct telephone link `tel:+9779825933188`.
+* When customers tap the button on a compatible device, immediately open the phone's dialer with the number filled in.
+* Keep the delivery contact hidden or blurred before the order reaches Out for Delivery, with a message such as: "Delivery contact will be available when your order is out for delivery."
+* Reveal the actual number and active call button only when the order reaches Out for Delivery.
+* Keep this functionality responsive and accessible on mobile and desktop.
+
+## 3. Remember an Already Authenticated User
+
+Improve the login experience so users do not have to repeatedly enter their login ID and password.
+
+* If a user has already logged in successfully and their session is still valid, take them directly to the appropriate page when they revisit the website.
+* Do not show the login form again unnecessarily or ask them to enter the same credentials repeatedly.
+* Maintain the user's login session securely across page refreshes and navigation.
+* Use the existing authentication system and secure session handling. If persistent login is supported, use a secure session or appropriately configured authentication cookie.
+* Keep normal customer and administrator permissions separate. An administrator must retain admin access only after successful administrator authentication.
+* Provide a working logout option that clears the authenticated session.
+* Do not store plain-text passwords in local storage or expose credentials in browser code.
+* If a session expires or becomes invalid, request login again securely.
+
+## 4. Organize Admin Orders into Two Sections
+
+Improve the admin panel's order management with two clearly separated sections:
+
+### A. Orders Received
+
+Show all orders that have not yet reached the Delivered status.
+
+This section includes orders in:
+
+* Order Placed
+* Order Verification
+* Order Confirmed
+* Preparing Your Order
+* Shipped
+* Out for Delivery
+
+Display useful information such as order ID, customer name, order date, total amount, and current delivery status. Allow administrators to open the order and update its status using the existing functionality.
+
+### B. Completed Orders
+
+Show only orders whose status is **Delivered**.
+
+When the admin changes an order's status to Delivered:
+
+* Automatically remove it from Orders Received.
+* Move it to Completed Orders.
+* Update dashboard counts and statistics accordingly.
+* Keep the order details and delivery history available for future reference.
+
+If a completed order is reopened or its status is changed back to an earlier stage, move it back to Orders Received automatically.
+
+### Additional requirements
+
+* Add clearly visible tabs or navigation options for **Orders Received** and **Completed Orders**.
+* Show the number of orders in each section, for example, Orders Received (5) and Completed Orders (12).
+* Include search and status filters where practical.
+* Ensure each order appears in only one section at a time.
+* Preserve all existing order data. Do not delete orders when moving them between sections.
+* Keep order counts accurate and synchronize changes across devices using the existing database or backend.
+
+## FINAL IMPLEMENTATION RULES
+
+1. Implement these four changes in the existing website without removing unrelated features.
+2. Preserve the current visual identity and improve spacing, typography, icons, animations, and mobile usability where necessary.
+3. Ensure the tracking page and admin panel use the same actual order status data.
+4. Test every stage transition, direct-call button, persistent login behavior, and order-section transfer.
+5. Do not create demo functionality, fake data, or buttons that do nothing.
+6. Do not break existing products, checkout, order creation, tracking IDs, authentication, or admin settings.
+
+**Goal:** Make T-Bee's order tracking more transparent, login more convenient, delivery contact easier to access, and order management simpler for administrators.
