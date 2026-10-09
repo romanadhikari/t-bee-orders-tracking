@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
   useTrackOrder, useGetAdminSession, useAdminLogin, useAdminLogout,
   useGetAdminDashboard, useListAdminOrders, useCreateAdminOrder, useGetNewTrackingId,
   useGetAdminOrder, useUpdateAdminOrder, useDeleteAdminOrder, useUpdateAdminOrderStatus,
-  useRequestOrderImageUpload, getGetAdminSessionQueryKey, getGetAdminDashboardQueryKey,
+  useRequestOrderImageUpload, trackOrder, getGetAdminSessionQueryKey, getGetAdminDashboardQueryKey,
   getListAdminOrdersQueryKey, getGetAdminOrderQueryKey, getGetNewTrackingIdQueryKey,
 } from '@workspace/api-client-react';
 import type { AdminOrder, AdminOrderSummary, OrderStatus, ProductInput, TrackingOrder } from '@workspace/api-client-react';
@@ -34,7 +34,7 @@ const errorText = (error: unknown) => {
 };
 
 function BrandMark({ small = false }: { small?: boolean }) {
-  return <img src="/brand/t-bee-logo.jpg" alt="T-Bee" className={small ? 'h-10 w-10 rounded-full object-cover' : 'h-12 w-12 rounded-full object-cover'} />;
+  return <img src="/brand/t-bee-mark.png" alt="T-Bee" className={small ? 'h-10 w-10 object-contain' : 'h-12 w-12 object-contain'} />;
 }
 
 function Header() {
@@ -43,7 +43,7 @@ function Header() {
     <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 md:px-10">
       <Link href="/" className="flex items-center gap-2.5" data-testid="link-brand"><BrandMark small/><span className="font-display text-[19px] font-bold tracking-[-.07em]">T-BEE<span className="text-[#B78900]">.</span></span></Link>
       <nav className="flex items-center gap-5 text-[10px] font-bold tracking-[.14em] md:gap-10 md:text-[11px]">
-        <a className="transition-colors hover:text-[#9B7400]" href="https://www.instagram.com/tbee.clothing/" target="_blank" rel="noreferrer" data-testid="link-home">HOME <ExternalLink className="ml-1 inline h-3 w-3"/></a>
+        <a className="transition-colors hover:text-[#9B7400]" href="https://t-bee-clothing.netlify.app/" target="_blank" rel="noreferrer" data-testid="link-home">HOME <ExternalLink className="ml-1 inline h-3 w-3"/></a>
         <Link className={path === '/' ? 'text-[#8D6900]' : 'hover:text-[#8D6900]'} href="/" data-testid="link-track">TRACK ORDER</Link>
         <Link className={path === '/login' ? 'text-[#8D6900]' : 'hover:text-[#8D6900]'} href="/login" data-testid="link-login">LOGIN</Link>
       </nav>
@@ -62,11 +62,11 @@ function Button({ children, onClick, type = 'button', variant = 'yellow', disabl
   return <button type={type} onClick={onClick} disabled={disabled} data-testid={testId} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-sm px-5 text-[11px] font-bold tracking-[.1em] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${theme} ${className}`}>{children}</button>;
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text', required = false, multiline = false, hint, testId }: {
-  label: string; value: string | number; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; multiline?: boolean; hint?: string; testId?: string;
+function Field({ label, value, onChange, placeholder, type = 'text', required = false, multiline = false, hint, testId, autoComplete }: {
+  label: string; value: string | number; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; multiline?: boolean; hint?: string; testId?: string; autoComplete?: string;
 }) {
   const cls = 'w-full rounded-sm border border-black/15 bg-[#FBFAF6] px-3.5 py-3 text-[14px] text-[#111] outline-none transition focus:border-[#111] focus:ring-2 focus:ring-[#FFC400]/60 placeholder:text-[#9B9992]';
-  return <label className="block space-y-1.5"><span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#777]">{label}{required && <span className="ml-1 text-[#A37B00]">*</span>}</span>{multiline ? <textarea rows={3} className={`${cls} resize-y`} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} required={required} data-testid={testId}/> : <input className={cls} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} type={type} required={required} data-testid={testId}/ >}{hint && <small className="block text-[11px] text-[#777]">{hint}</small>}</label>;
+  return <label className="block space-y-1.5"><span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#777]">{label}{required && <span className="ml-1 text-[#A37B00]">*</span>}</span>{multiline ? <textarea rows={3} className={`${cls} resize-y`} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} required={required} data-testid={testId}/> : <input className={cls} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} type={type} required={required} autoComplete={autoComplete} data-testid={testId}/ >}{hint && <small className="block text-[11px] text-[#777]">{hint}</small>}</label>;
 }
 
 function LoadingBlock({ message = 'Loading order details' }: { message?: string }) {
@@ -80,18 +80,19 @@ function StatusPill({ status }: { status: OrderStatus }) {
 
 function Timeline({ order }: { order: TrackingOrder }) {
   const orderedHistory = [...order.statusHistory].sort((a,b)=>new Date(a.updatedAt).getTime()-new Date(b.updatedAt).getTime());
+  const events = [{ label: 'Order Placed', updatedAt: order.createdAt }, ...orderedHistory.map(event=>({label:labels[event.status],updatedAt:event.updatedAt}))];
   return <ol className="relative ml-1 mt-5 space-y-0 border-l border-black/15 pl-6" data-testid="order-status-history">
-    {orderedHistory.map((event,index)=><li key={`${event.status}-${event.updatedAt}`} className="relative pb-6 last:pb-0">
-      <span className={`absolute -left-[31px] top-1 flex h-3 w-3 items-center justify-center rounded-full ring-4 ring-[#F5F3ED] ${index === orderedHistory.length-1 ? 'bg-[#FFC400]' : 'bg-[#111]'}`}/>
-      <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-[13px] font-semibold">{labels[event.status]}</p><time className="text-[10px] text-[#777]">{date(event.updatedAt)}</time></div>
+    {events.map((event,index)=><li key={`${event.label}-${event.updatedAt}-${index}`} className="relative pb-6 last:pb-0">
+      <span className={`absolute -left-[31px] top-1 flex h-3 w-3 items-center justify-center rounded-full ring-4 ring-[#F5F3ED] ${index === events.length-1 ? 'bg-[#FFC400]' : 'bg-[#111]'}`}/>
+      <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-[13px] font-semibold">{event.label}</p><time className="text-[10px] text-[#777]">{date(event.updatedAt)}</time></div>
     </li>)}
   </ol>;
 }
 
 function Invoice({ order, onDownload }: { order: TrackingOrder; onDownload: () => void }) {
   return <section id="invoice" className="overflow-hidden border border-black/15 bg-[#FBFAF6]" data-testid="invoice-preview">
-    <div className="flex items-start justify-between border-b-[5px] border-[#FFC400] bg-[#111] px-5 py-5 text-[#F5F3ED] md:px-7">
-      <div className="flex items-center gap-3"><BrandMark small/><div><p className="font-display text-xl font-bold tracking-[-.06em]">T-BEE</p><p className="text-[9px] tracking-[.16em] text-white/60">BIRTAMODE · NEPAL</p></div></div>
+      <div className="flex items-start justify-between border-b-[5px] border-[#FFC400] bg-[#111] px-5 py-5 text-[#F5F3ED] md:px-7">
+      <div className="flex items-center gap-3"><BrandMark small/><div><p className="font-display text-xl font-bold tracking-[-.06em]">T-BEE</p><p className="text-[9px] tracking-[.16em] text-white/60">BIRTAMODE · JHAPA · NEPAL</p></div></div>
       <div className="text-right"><p className="text-[9px] font-bold tracking-[.18em] text-[#FFC400]">INVOICE</p><p className="mt-1 font-display text-sm font-semibold">{order.trackingId}</p></div>
     </div>
     <div className="p-5 md:p-7">
@@ -100,34 +101,192 @@ function Invoice({ order, onDownload }: { order: TrackingOrder; onDownload: () =
         <div className="text-right"><p className="text-[9px] font-bold tracking-[.13em] text-[#777]">ORDER DATE</p><p className="mt-1 font-semibold">{date(order.createdAt)}</p><p className="mt-3"><StatusPill status={order.status}/></p></div>
       </div>
       <div className="space-y-0">
-        <div className="grid grid-cols-[1fr_44px_76px] border-b border-black/15 pb-2 text-[9px] font-bold tracking-[.13em] text-[#777]"><span>ITEM</span><span className="text-center">QTY</span><span className="text-right">AMOUNT</span></div>
-        {order.items.map(item=><div key={item.id} className="grid grid-cols-[1fr_44px_76px] items-center border-b border-black/[.07] py-3 text-[12px]"><span>{item.productName}</span><span className="text-center">{item.quantity}</span><span className="text-right font-semibold">{money(item.lineSubtotal)}</span></div>)}
+        <div className="grid grid-cols-[1fr_38px_64px_76px] border-b border-black/15 pb-2 text-[9px] font-bold tracking-[.1em] text-[#777]"><span>ITEM</span><span className="text-center">QTY</span><span className="text-right">PRICE</span><span className="text-right">AMOUNT</span></div>
+        {order.items.map(item=><div key={item.id} className="grid grid-cols-[1fr_38px_64px_76px] items-start border-b border-black/[.07] py-3 text-[11px]"><span className="min-w-0 break-words pr-2">{item.productName}</span><span className="text-center">{item.quantity}</span><span className="text-right">{money(item.unitPrice)}</span><span className="text-right font-semibold">{money(item.lineSubtotal)}</span></div>)}
       </div>
       <div className="ml-auto mt-4 max-w-[240px] space-y-2 text-[12px]"><div className="flex justify-between"><span className="text-[#777]">Items subtotal</span><span>{money(order.productSubtotal)}</span></div><div className="flex justify-between"><span className="text-[#777]">Delivery</span><span>{order.deliveryCharge ? money(order.deliveryCharge) : 'Included'}</span></div>{order.discountAmount > 0 && <div className="flex justify-between"><span className="text-[#777]">Discount</span><span>− {money(order.discountAmount)}</span></div>}<div className="flex justify-between border-t border-black pt-3 text-[15px] font-bold"><span>TOTAL</span><span>{money(order.finalTotal)}</span></div></div>
-      <p className="mt-7 border-t border-dashed border-black/20 pt-4 text-center text-[10px] text-[#777]">Thank you for choosing T-Bee. Made to move with you.</p>
+       <p className="mt-7 border-t border-dashed border-black/20 pt-4 text-center text-[10px] text-[#777]">Thank you for choosing T-Bee Clothing. Wear your vision. Stay original.</p>
       <Button className="mt-5 w-full" onClick={onDownload} testId="button-download-invoice"><Download className="h-4 w-4"/> DOWNLOAD INVOICE PNG</Button>
     </div>
   </section>;
 }
 
-function downloadInvoice(order: TrackingOrder) {
-  const canvas = document.createElement('canvas'); canvas.width=900; canvas.height=Math.max(760,370+order.items.length*55);
-  const ctx=canvas.getContext('2d'); if (!ctx) return;
-  ctx.fillStyle='#F5F3ED'; ctx.fillRect(0,0,900,canvas.height); ctx.fillStyle='#111'; ctx.fillRect(0,0,900,142); ctx.fillStyle='#FFC400'; ctx.fillRect(0,137,900,8);
-  ctx.fillStyle='#FFC400'; ctx.font='bold 15px sans-serif'; ctx.fillText('T-BEE  /  BIRTAMODE · NEPAL',55,53); ctx.fillStyle='#F5F3ED'; ctx.font='bold 34px sans-serif'; ctx.fillText('INVOICE',55,100); ctx.textAlign='right'; ctx.font='bold 20px sans-serif'; ctx.fillText(order.trackingId,845,92); ctx.textAlign='left';
-  ctx.fillStyle='#111'; ctx.font='bold 13px sans-serif'; ctx.fillText('BILLED TO',55,195); ctx.fillText('ORDER DATE',560,195); ctx.font='17px sans-serif'; ctx.fillText(order.customerName,55,224); ctx.fillText(date(order.createdAt),560,224); ctx.font='14px sans-serif'; ctx.fillStyle='#777'; ctx.fillText(order.deliveryAddress.replace(/\n/g,' '),55,251);
-  let y=315; ctx.fillStyle='#777'; ctx.font='bold 12px sans-serif'; ctx.fillText('ITEM',55,y); ctx.textAlign='center'; ctx.fillText('QTY',675,y); ctx.textAlign='right'; ctx.fillText('AMOUNT',845,y); ctx.textAlign='left';
-  order.items.forEach(item=>{y+=48;ctx.strokeStyle='#ddd';ctx.beginPath();ctx.moveTo(55,y+15);ctx.lineTo(845,y+15);ctx.stroke();ctx.fillStyle='#111';ctx.font='15px sans-serif';ctx.fillText(item.productName,55,y);ctx.textAlign='center';ctx.fillText(String(item.quantity),675,y);ctx.textAlign='right';ctx.fillText(money(item.lineSubtotal),845,y);ctx.textAlign='left';});
-  y+=58; ctx.fillStyle='#777'; ctx.font='15px sans-serif'; ctx.fillText('Items subtotal',560,y);ctx.textAlign='right';ctx.fillStyle='#111';ctx.fillText(money(order.productSubtotal),845,y); y+=32;ctx.textAlign='left';ctx.fillStyle='#777';ctx.fillText('Delivery',560,y);ctx.textAlign='right';ctx.fillStyle='#111';ctx.fillText(order.deliveryCharge?money(order.deliveryCharge):'Included',845,y);
-  if(order.discountAmount){y+=32;ctx.textAlign='left';ctx.fillStyle='#777';ctx.fillText('Discount',560,y);ctx.textAlign='right';ctx.fillStyle='#111';ctx.fillText(`− ${money(order.discountAmount)}`,845,y);}
-  y+=45;ctx.strokeStyle='#111';ctx.beginPath();ctx.moveTo(560,y-16);ctx.lineTo(845,y-16);ctx.stroke();ctx.textAlign='left';ctx.fillStyle='#111';ctx.font='bold 21px sans-serif';ctx.fillText('TOTAL',560,y+10);ctx.textAlign='right';ctx.fillText(money(order.finalTotal),845,y+10);ctx.textAlign='center';ctx.fillStyle='#777';ctx.font='13px sans-serif';ctx.fillText('Thank you for choosing T-Bee.',450,canvas.height-40);
-  const link=document.createElement('a');link.download=`T-Bee-${order.trackingId}.png`;link.href=canvas.toDataURL('image/png');link.click();
+function wrapCanvasText(ctx: CanvasRenderingContext2D, value: string, maxWidth: number, maxLines = 6) {
+  const lines: string[] = [];
+  for (const paragraph of value.split(/\r?\n/)) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (!words.length) { lines.push(''); continue; }
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[.…]+$/, '')}…`;
+  }
+  return lines;
+}
+
+async function downloadInvoice(order: TrackingOrder) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1000;
+  canvas.height = 1;
+  const measure = canvas.getContext('2d');
+  if (!measure) return;
+
+  const logo = await new Promise<HTMLImageElement | null>(resolve => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = '/brand/t-bee-mark.png';
+  });
+
+  measure.font = 'bold 16px sans-serif';
+  const customerLines = wrapCanvasText(measure, order.customerName, 590, 3);
+  measure.font = '14px sans-serif';
+  const addressLines = wrapCanvasText(measure, order.deliveryAddress, 590, 20);
+  const landmarkLines = order.landmark ? wrapCanvasText(measure, `Landmark: ${order.landmark}`, 590, 8) : [];
+  const itemRows = order.items.map(item => {
+    measure.font = '15px sans-serif';
+    const nameLines = wrapCanvasText(measure, item.productName, 500, 3);
+    return { item, nameLines, height: Math.max(56, nameLines.length * 20 + 22) };
+  });
+  const tableTop = Math.max(315, 260 + (customerLines.length + addressLines.length + landmarkLines.length) * 20);
+  const rowsHeight = itemRows.reduce((total, row) => total + row.height, 0);
+  const summaryLines = order.discountAmount > 0 ? 4 : 3;
+  canvas.height = tableTop + 52 + rowsHeight + summaryLines * 34 + 175;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.fillStyle = '#F5F3ED';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(0, 0, canvas.width, 150);
+  ctx.fillStyle = '#FFC400';
+  ctx.fillRect(0, 144, canvas.width, 6);
+  if (logo) ctx.drawImage(logo, 55, 25, 100, 100);
+  ctx.fillStyle = '#FFC400';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('T-BEE CLOTHING', 180, 56);
+  ctx.fillStyle = '#F5F3ED';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('Birtamode, Jhapa, Nepal', 180, 81);
+  ctx.font = 'bold 30px sans-serif';
+  ctx.fillText('INVOICE', 180, 121);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#FFC400';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('TRACKING / INVOICE ID', 945, 58);
+  ctx.fillStyle = '#F5F3ED';
+  ctx.font = 'bold 19px sans-serif';
+  ctx.fillText(order.trackingId, 945, 91);
+  ctx.textAlign = 'left';
+
+  let y = 194;
+  ctx.fillStyle = '#777777';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('BILLED TO', 60, y);
+  ctx.fillText('ORDER DATE', 680, y);
+  y += 27;
+  ctx.fillStyle = '#111111';
+  ctx.font = 'bold 16px sans-serif';
+  customerLines.forEach(line => { ctx.fillText(line, 60, y); y += 20; });
+  ctx.textAlign = 'right';
+  ctx.font = '14px sans-serif';
+  ctx.fillText(date(order.createdAt), 945, 221);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#777777';
+  ctx.font = '14px sans-serif';
+  addressLines.forEach(line => { ctx.fillText(line, 60, y); y += 20; });
+  landmarkLines.forEach(line => { ctx.fillText(line, 60, y); y += 20; });
+
+  y = tableTop;
+  ctx.fillStyle = '#777777';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('PRODUCT', 60, y);
+  ctx.textAlign = 'center';
+  ctx.fillText('QTY', 700, y);
+  ctx.textAlign = 'right';
+  ctx.fillText('UNIT PRICE', 845, y);
+  ctx.fillText('AMOUNT', 945, y);
+  ctx.textAlign = 'left';
+  ctx.strokeStyle = '#111111';
+  ctx.beginPath();
+  ctx.moveTo(60, y + 13);
+  ctx.lineTo(945, y + 13);
+  ctx.stroke();
+
+  y += 42;
+  for (const row of itemRows) {
+    ctx.fillStyle = '#111111';
+    ctx.font = '15px sans-serif';
+    row.nameLines.forEach((line, index) => ctx.fillText(line, 60, y + index * 20, 500));
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(row.item.quantity), 700, y);
+    ctx.textAlign = 'right';
+    ctx.fillText(money(row.item.unitPrice), 845, y);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(money(row.item.lineSubtotal), 945, y);
+    ctx.textAlign = 'left';
+    y += row.height;
+    ctx.strokeStyle = '#d8d5cd';
+    ctx.beginPath();
+    ctx.moveTo(60, y - 10);
+    ctx.lineTo(945, y - 10);
+    ctx.stroke();
+  }
+
+  y += 28;
+  const summary = [
+    ['Items subtotal', money(order.productSubtotal)],
+    [`Delivery · ${order.deliveryOption === 'birtamode' ? 'Birtamode' : 'Outside Birtamode'}`, money(order.deliveryCharge)],
+    ...(order.discountAmount > 0 ? [['Discount', `− ${money(order.discountAmount)}`]] : []),
+  ];
+  ctx.font = '14px sans-serif';
+  for (const [label, amount] of summary) {
+    ctx.fillStyle = '#777777';
+    ctx.fillText(label, 650, y);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#111111';
+    ctx.fillText(amount, 945, y);
+    ctx.textAlign = 'left';
+    y += 32;
+  }
+  ctx.strokeStyle = '#111111';
+  ctx.beginPath();
+  ctx.moveTo(650, y - 10);
+  ctx.lineTo(945, y - 10);
+  ctx.stroke();
+  ctx.fillStyle = '#111111';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('TOTAL', 650, y + 20);
+  ctx.textAlign = 'right';
+  ctx.fillText(money(order.finalTotal), 945, y + 20);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#777777';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('Thank you for choosing T-Bee Clothing. Wear your vision. Stay original.', 500, canvas.height - 45);
+
+  const link = document.createElement('a');
+  link.download = `T-Bee-${order.trackingId}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
 
 function TrackPage() {
-  const track = useTrackOrder(); const [trackingId,setTrackingId]=useState(''); const [submitted,setSubmitted]=useState(false);
-  const order=track.data as TrackingOrder|undefined;
-  function submit(e: React.FormEvent) { e.preventDefault(); setSubmitted(true); track.mutate({data:{trackingId:trackingId.trim().toUpperCase()}}); }
+  const track = useTrackOrder(); const queryClient=useQueryClient(); const [trackingId,setTrackingId]=useState(''); const [submitted,setSubmitted]=useState(false); const [activeTrackingId,setActiveTrackingId]=useState('');
+  const liveTracking=useQuery({queryKey:['public-order-tracking',activeTrackingId],queryFn:()=>trackOrder({trackingId:activeTrackingId}),enabled:Boolean(activeTrackingId),staleTime:12000,refetchInterval:15000,refetchOnWindowFocus:true,retry:1});
+  const order=(liveTracking.data ?? track.data) as TrackingOrder|undefined;
+  function submit(e: React.FormEvent) { e.preventDefault(); const id=trackingId.trim().toUpperCase(); setActiveTrackingId(''); setSubmitted(true); track.mutate({data:{trackingId:id}},{onSuccess:result=>{queryClient.setQueryData(['public-order-tracking',result.trackingId],result);setActiveTrackingId(result.trackingId);}}); }
   return <PageShell><main className="mx-auto max-w-6xl px-5 pb-20 pt-8 md:px-10 md:pt-14">
     <section className="relative overflow-hidden bg-[#FFC400] px-6 py-10 md:px-12 md:py-14">
       <div className="absolute -right-12 -top-16 h-64 w-64 rounded-full border-[36px] border-black/[.06] md:right-10 md:top-[-70px] md:h-80 md:w-80"/>
@@ -141,7 +300,7 @@ function TrackPage() {
       </form>
     </section>
     {track.isPending && <div className="mt-8"><LoadingBlock message="Looking up your order"/></div>}
-    {submitted && track.isError && !track.isPending && <div className="mt-6 flex items-start gap-3 border border-[#a62720]/30 bg-[#f8e9e6] p-4 text-[#86281f]" role="alert" data-testid="status-track-error"><X className="mt-0.5 h-4 w-4"/><div><p className="text-sm font-bold">We couldn’t find that order.</p><p className="mt-1 text-xs">{errorText(track.error)}</p></div></div>}
+    {submitted && !activeTrackingId && track.isError && !track.isPending && <div className="mt-6 flex items-start gap-3 border border-[#a62720]/30 bg-[#f8e9e6] p-4 text-[#86281f]" role="alert" data-testid="status-track-error"><X className="mt-0.5 h-4 w-4"/><div><p className="text-sm font-bold">We couldn’t find that order.</p><p className="mt-1 text-xs">{errorText(track.error)}</p></div></div>}
     {order && !track.isPending && <div className="page-enter mt-8 grid gap-7 lg:grid-cols-[1.08fr_.92fr]">
       <section className="space-y-6">
         <div className="border border-black/10 bg-[#FBFAF6] p-5 md:p-7">
@@ -167,9 +326,9 @@ function LoginPage() {
   const [username,setUsername]=useState('');const [password,setPassword]=useState('');
   function submit(e: React.FormEvent){e.preventDefault();login.mutate({data:{username,password}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetAdminSessionQueryKey()});setLocation('/dashboard');}});}
   return <PageShell><main className="mx-auto grid min-h-[calc(100dvh-72px)] max-w-6xl items-center gap-12 px-5 py-12 md:grid-cols-[1fr_.85fr] md:px-10">
-    <div className="max-w-lg"><p className="text-[10px] font-bold tracking-[.2em] text-[#8A6800]">T-BEE / ORDER DESK</p><h1 className="mt-5 font-display text-5xl font-bold leading-[.98] tracking-[-.08em] md:text-7xl">GOOD TO<br/>HAVE YOU<br/>BACK.</h1><p className="mt-6 max-w-sm text-sm leading-6 text-[#777]">A clear view of every order, from the first message to the final hand-off.</p></div>
-    <form onSubmit={submit} className="border border-black/10 bg-[#FBFAF6] p-6 md:p-9"><div className="mb-8 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center bg-[#FFC400]"><LockKeyhole className="h-5 w-5"/></div><div><p className="font-display text-lg font-bold">Sign in</p><p className="text-xs text-[#777]">Continue to your account</p></div></div>
-      <div className="space-y-5"><Field label="Username" value={username} onChange={setUsername} required placeholder="Your username" testId="input-username"/><Field label="Password" value={password} onChange={setPassword} required type="password" placeholder="Your password" testId="input-password"/></div>
+    <div className="max-w-lg"><p className="text-[10px] font-bold tracking-[.2em] text-[#8A6800]">T-BEE / ORDER DESK</p><h1 className="mt-5 font-display text-5xl font-bold leading-[.98] tracking-[-.08em] md:text-7xl">WELCOME<br/>BACK</h1><p className="mt-6 max-w-sm text-sm leading-6 text-[#777]">Sign in to continue.</p></div>
+    <form onSubmit={submit} className="border border-black/10 bg-[#FBFAF6] p-6 md:p-9"><div className="mb-8 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center bg-[#FFC400]"><LockKeyhole className="h-5 w-5"/></div><div><p className="font-display text-lg font-bold">Sign in</p><p className="text-xs text-[#777]">Sign in to continue.</p></div></div>
+       <div className="space-y-5"><Field label="Username" value={username} onChange={setUsername} required placeholder="Your username" autoComplete="username" testId="input-username"/><Field label="Password" value={password} onChange={setPassword} required type="password" placeholder="Your password" autoComplete="current-password" testId="input-password"/></div>
       {login.isError && <p className="mt-4 text-xs text-red-700" role="alert">{errorText(login.error)}</p>}<Button type="submit" className="mt-7 w-full" disabled={login.isPending} testId="button-login">{login.isPending ? <LoaderCircle className="h-4 w-4 animate-spin"/> : 'SIGN IN'} <ArrowRight className="h-4 w-4"/></Button>
     </form>
   </main></PageShell>;
@@ -177,8 +336,8 @@ function LoginPage() {
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const session=useGetAdminSession();const [,setLocation]=useLocation();
-  useEffect(()=>{if(session.data && !session.data.authenticated)setLocation('/login');},[session.data,setLocation]);
-  if(session.isLoading || session.isFetching && !session.data)return <PageShell><main className="mx-auto max-w-7xl px-5 py-12"><LoadingBlock message="Checking access"/></main></PageShell>;
+  useEffect(()=>{if(session.data && !session.data.authenticated && !session.isFetching)setLocation('/login');},[session.data,session.isFetching,setLocation]);
+  if(session.isLoading || session.isFetching)return <PageShell><main className="mx-auto max-w-7xl px-5 py-12"><LoadingBlock message="Checking access"/></main></PageShell>;
   if(session.isError){return <PageShell><main className="mx-auto max-w-xl px-5 py-20 text-center"><ShieldCheck className="mx-auto h-8 w-8"/><h1 className="mt-4 font-display text-2xl font-bold">Access check unavailable</h1><p className="mt-2 text-sm text-[#777]">{errorText(session.error)}</p><Button className="mt-5" onClick={()=>session.refetch()} testId="button-retry-session">TRY AGAIN</Button></main></PageShell>;}
   if(!session.data?.authenticated)return null;
   return <>{children}</>;
