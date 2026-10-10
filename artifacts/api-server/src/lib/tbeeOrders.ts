@@ -7,8 +7,10 @@ const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 export const orderStatuses = [
   "pending",
   "verified",
+  "confirmed",
   "processing",
   "ready_for_dispatch",
+  "shipped",
   "out_for_delivery",
   "delivered",
   "cancelled",
@@ -95,7 +97,7 @@ export function hashNetworkAddress(address: string): string {
 }
 
 export function statusCanShowDeliveryContacts(status: OrderStatus): boolean {
-  return status === "out_for_delivery" || status === "delivered";
+  return status === "out_for_delivery";
 }
 
 export function toIso(value: Date | string | null | undefined): string | null {

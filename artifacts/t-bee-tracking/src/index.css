@@ -93,5 +93,13 @@ button, input, select, textarea { font: inherit; }
 .font-display { font-family: var(--app-font-mono); }
 .page-enter { animation: arrive .45s ease-out both; }
 @keyframes arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.timeline-current { animation: timeline-pulse 2.2s ease-in-out infinite; }
+.timeline-check-enter { animation: timeline-check-in .32s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes timeline-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+@keyframes timeline-check-in { from { opacity: 0; transform: scale(.65); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .timeline-current, .timeline-check-enter { animation: none !important; }
+  [data-testid^="timeline-stage-"] * { transition: none !important; }
+}
 .noise { position: relative; }
 .noise::after { content:""; pointer-events:none; position:fixed; inset:0; z-index:50; opacity:.025; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E"); }

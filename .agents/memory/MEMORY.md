@@ -1,1 +1,2 @@
 - [T-Bee data backend](tbee-data-backend.md) — current storage uses Replit PostgreSQL and App Storage; no automatic Supabase mirror.
+- [T-Bee order statuses](tbee-order-statuses.md) — extend the persisted workflow additively and keep legacy dispatch status honest in the timeline.

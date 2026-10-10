@@ -9,5 +9,4 @@
 export interface DeliveryContact {
   name: string;
   phone: string;
-  whatsappUrl: string;
 }

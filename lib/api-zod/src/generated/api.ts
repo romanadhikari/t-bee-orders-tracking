@@ -32,7 +32,7 @@ export const TrackOrderResponse = zod.object({
   "customerName": zod.string(),
   "deliveryAddress": zod.string(),
   "landmark": zod.string().nullable(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "items": zod.array(zod.object({
   "id": zod.string(),
   "productName": zod.string(),
@@ -47,15 +47,14 @@ export const TrackOrderResponse = zod.object({
   "discountAmount": zod.number(),
   "finalTotal": zod.number(),
   "statusHistory": zod.array(zod.object({
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "updatedAt": zod.coerce.date()
 })),
   "deliveryMessage": zod.string().nullable(),
   "deliveryMessageUpdatedAt": zod.coerce.date().nullable(),
   "deliveryContacts": zod.array(zod.object({
   "name": zod.string(),
-  "phone": zod.string(),
-  "whatsappUrl": zod.string().url()
+  "phone": zod.string()
 })).nullable()
 })
 
@@ -114,14 +113,14 @@ export const GetAdminDashboardResponse = zod.object({
  */
 export const ListAdminOrdersQueryParams = zod.object({
   "search": zod.coerce.string().optional(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']).optional()
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']).optional()
 })
 
 export const ListAdminOrdersResponseItem = zod.object({
   "trackingId": zod.string(),
   "createdAt": zod.coerce.date(),
   "customerName": zod.string(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "finalTotal": zod.number(),
   "itemCount": zod.number().int()
 })
@@ -178,7 +177,7 @@ export const CreateAdminOrderResponse = zod.object({
   "customerName": zod.string(),
   "deliveryAddress": zod.string(),
   "landmark": zod.string().nullable(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "items": zod.array(zod.object({
   "id": zod.string(),
   "productName": zod.string(),
@@ -193,15 +192,14 @@ export const CreateAdminOrderResponse = zod.object({
   "discountAmount": zod.number(),
   "finalTotal": zod.number(),
   "statusHistory": zod.array(zod.object({
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "updatedAt": zod.coerce.date()
 })),
   "deliveryMessage": zod.string().nullable(),
   "deliveryMessageUpdatedAt": zod.coerce.date().nullable(),
   "deliveryContacts": zod.array(zod.object({
   "name": zod.string(),
-  "phone": zod.string(),
-  "whatsappUrl": zod.string().url()
+  "phone": zod.string()
 })).nullable()
 }).and(zod.object({
   "customerPhone": zod.string(),
@@ -236,7 +234,7 @@ export const GetAdminOrderResponse = zod.object({
   "customerName": zod.string(),
   "deliveryAddress": zod.string(),
   "landmark": zod.string().nullable(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "items": zod.array(zod.object({
   "id": zod.string(),
   "productName": zod.string(),
@@ -251,15 +249,14 @@ export const GetAdminOrderResponse = zod.object({
   "discountAmount": zod.number(),
   "finalTotal": zod.number(),
   "statusHistory": zod.array(zod.object({
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "updatedAt": zod.coerce.date()
 })),
   "deliveryMessage": zod.string().nullable(),
   "deliveryMessageUpdatedAt": zod.coerce.date().nullable(),
   "deliveryContacts": zod.array(zod.object({
   "name": zod.string(),
-  "phone": zod.string(),
-  "whatsappUrl": zod.string().url()
+  "phone": zod.string()
 })).nullable()
 }).and(zod.object({
   "customerPhone": zod.string(),
@@ -324,7 +321,7 @@ export const UpdateAdminOrderResponse = zod.object({
   "customerName": zod.string(),
   "deliveryAddress": zod.string(),
   "landmark": zod.string().nullable(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "items": zod.array(zod.object({
   "id": zod.string(),
   "productName": zod.string(),
@@ -339,15 +336,14 @@ export const UpdateAdminOrderResponse = zod.object({
   "discountAmount": zod.number(),
   "finalTotal": zod.number(),
   "statusHistory": zod.array(zod.object({
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "updatedAt": zod.coerce.date()
 })),
   "deliveryMessage": zod.string().nullable(),
   "deliveryMessageUpdatedAt": zod.coerce.date().nullable(),
   "deliveryContacts": zod.array(zod.object({
   "name": zod.string(),
-  "phone": zod.string(),
-  "whatsappUrl": zod.string().url()
+  "phone": zod.string()
 })).nullable()
 }).and(zod.object({
   "customerPhone": zod.string(),
@@ -379,7 +375,7 @@ export const UpdateAdminOrderStatusParams = zod.object({
 })
 
 export const UpdateAdminOrderStatusBody = zod.object({
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled'])
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'])
 })
 
 export const UpdateAdminOrderStatusResponse = zod.object({
@@ -388,7 +384,7 @@ export const UpdateAdminOrderStatusResponse = zod.object({
   "customerName": zod.string(),
   "deliveryAddress": zod.string(),
   "landmark": zod.string().nullable(),
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "items": zod.array(zod.object({
   "id": zod.string(),
   "productName": zod.string(),
@@ -403,15 +399,14 @@ export const UpdateAdminOrderStatusResponse = zod.object({
   "discountAmount": zod.number(),
   "finalTotal": zod.number(),
   "statusHistory": zod.array(zod.object({
-  "status": zod.enum(['pending', 'verified', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered', 'cancelled']),
+  "status": zod.enum(['pending', 'verified', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'out_for_delivery', 'delivered', 'cancelled']),
   "updatedAt": zod.coerce.date()
 })),
   "deliveryMessage": zod.string().nullable(),
   "deliveryMessageUpdatedAt": zod.coerce.date().nullable(),
   "deliveryContacts": zod.array(zod.object({
   "name": zod.string(),
-  "phone": zod.string(),
-  "whatsappUrl": zod.string().url()
+  "phone": zod.string()
 })).nullable()
 }).and(zod.object({
   "customerPhone": zod.string(),

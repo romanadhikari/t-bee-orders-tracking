@@ -54,13 +54,7 @@ const publicTrackWindows = new Map<string, { count: number; resetAt: number }>()
 const deliveryContacts = [
   {
     name: "T-Bee Delivery",
-    phone: "+977 9704581290",
-    whatsappUrl: "https://wa.me/9779704581290",
-  },
-  {
-    name: "T-Bee Delivery",
     phone: "+977 9825933188",
-    whatsappUrl: "https://wa.me/9779825933188",
   },
 ];
 
@@ -286,8 +280,8 @@ router.get("/admin/dashboard", requireTbeeAdmin, async (req, res) => {
       .select({
         totalOrders: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null)::int`,
         pending: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} = 'pending')::int`,
-        processing: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} = 'processing')::int`,
-        outForDelivery: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} = 'out_for_delivery')::int`,
+        processing: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} in ('confirmed', 'processing', 'ready_for_dispatch'))::int`,
+        outForDelivery: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} in ('shipped', 'out_for_delivery'))::int`,
         delivered: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} = 'delivered')::int`,
         cancelled: sql<number>`count(*) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} = 'cancelled')::int`,
         deliveredSales: sql<number>`coalesce(sum(${ordersTable.finalTotal}::numeric) filter (where ${ordersTable.archivedAt} is null and ${ordersTable.status} = 'delivered'), 0)::float`,

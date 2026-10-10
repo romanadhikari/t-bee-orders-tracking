@@ -13,8 +13,10 @@ import {
 export const orderStatusEnum = pgEnum("tbee_order_status", [
   "pending",
   "verified",
+  "confirmed",
   "processing",
   "ready_for_dispatch",
+  "shipped",
   "out_for_delivery",
   "delivered",
   "cancelled",

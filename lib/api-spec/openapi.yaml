@@ -376,8 +376,10 @@ components:
       enum:
         - pending
         - verified
+        - confirmed
         - processing
         - ready_for_dispatch
+        - shipped
         - out_for_delivery
         - delivered
         - cancelled
@@ -461,10 +463,7 @@ components:
           type: string
         phone:
           type: string
-        whatsappUrl:
-          type: string
-          format: uri
-      required: [name, phone, whatsappUrl]
+      required: [name, phone]
     TrackingOrder:
       type: object
       properties:

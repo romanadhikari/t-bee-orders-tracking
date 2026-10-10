@@ -12,20 +12,31 @@ import type { AdminOrder, AdminOrderSummary, OrderStatus, ProductInput, Tracking
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, Check, Copy, Download,
   ExternalLink, ImagePlus, LoaderCircle, LockKeyhole, LogOut, Package,
-  Search, ShieldCheck, ShoppingBag, X,
+  PhoneCall, Search, ShieldCheck, ShoppingBag, X,
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import { canShowDeliveryContact, getTimelineProgress, partitionOrders, telephoneHref } from './order-workflow';
 
 const queryClient = new QueryClient();
-const statuses: OrderStatus[] = ['pending','verified','processing','ready_for_dispatch','out_for_delivery','delivered','cancelled'];
+const statuses: OrderStatus[] = ['pending','verified','confirmed','processing','ready_for_dispatch','shipped','out_for_delivery','delivered','cancelled'];
 const labels: Record<OrderStatus,string> = {
-  pending:'Order received', verified:'Order verified', processing:'Being prepared',
-  ready_for_dispatch:'Ready for dispatch', out_for_delivery:'Out for delivery',
+  pending:'Order Placed', verified:'Order Verification', confirmed:'Order Confirmed',
+  processing:'Preparing Your Order', ready_for_dispatch:'Ready for Dispatch',
+  shipped:'Shipped', out_for_delivery:'Out for Delivery',
   delivered:'Delivered', cancelled:'Cancelled',
 };
+const timelineStages: Array<{ title: string; description: string; statuses: OrderStatus[] }> = [
+  { title: 'Order Placed', description: 'Your order has been successfully received by T-Bee.', statuses: ['pending'] },
+  { title: 'Order Verification', description: 'We are checking your order and confirming the details.', statuses: ['verified'] },
+  { title: 'Order Confirmed', description: 'Your order has been confirmed and is ready for preparation.', statuses: ['confirmed'] },
+  { title: 'Preparing Your Order', description: 'Your T-shirt is being prepared and packed.', statuses: ['processing', 'ready_for_dispatch'] },
+  { title: 'Shipped', description: 'Your order has been handed over for delivery.', statuses: ['shipped'] },
+  { title: 'Out for Delivery', description: "Your order is on its way to your doorstep. The delivery person's phone number becomes visible at this stage.", statuses: ['out_for_delivery'] },
+  { title: 'Delivered', description: 'Your order has been successfully delivered.', statuses: ['delivered'] },
+];
 const money = (amount: number) => `Rs. ${Number(amount || 0).toLocaleString('en-IN')}`;
 const date = (value?: string | null) => value ? new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)) : '—';
 const errorText = (error: unknown) => {
@@ -80,11 +91,51 @@ function StatusPill({ status }: { status: OrderStatus }) {
 
 function Timeline({ order }: { order: TrackingOrder }) {
   const orderedHistory = [...order.statusHistory].sort((a,b)=>new Date(a.updatedAt).getTime()-new Date(b.updatedAt).getTime());
-  const events = [{ label: 'Order Placed', updatedAt: order.createdAt }, ...orderedHistory.map(event=>({label:labels[event.status],updatedAt:event.updatedAt}))];
-  return <ol className="relative ml-1 mt-5 space-y-0 border-l border-black/15 pl-6" data-testid="order-status-history">
-    {events.map((event,index)=><li key={`${event.label}-${event.updatedAt}-${index}`} className="relative pb-6 last:pb-0">
-      <span className={`absolute -left-[31px] top-1 flex h-3 w-3 items-center justify-center rounded-full ring-4 ring-[#F5F3ED] ${index === events.length-1 ? 'bg-[#FFC400]' : 'bg-[#111]'}`}/>
-      <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-[13px] font-semibold">{event.label}</p><time className="text-[10px] text-[#777]">{date(event.updatedAt)}</time></div>
+  const latestCurrentEvent = [...orderedHistory].reverse().find(event => event.status === order.status);
+  const lastNonCancelledEvent = [...orderedHistory].reverse().find(event => event.status !== 'cancelled');
+  const cancelled = order.status === 'cancelled';
+  const { currentIndex, completedThrough, progressTarget } = getTimelineProgress(order.status, lastNonCancelledEvent?.status ?? 'pending');
+
+  return <ol className="mt-5 space-y-0" aria-label="T-Bee order tracking stages" aria-live="polite" data-testid="order-status-history">
+    {timelineStages.map((stage,index)=>{
+      const isComplete = index <= completedThrough;
+      const isCurrent = !cancelled && index === currentIndex;
+      const stageEvent = orderedHistory.filter(event=>stage.statuses.includes(event.status)).at(-1);
+      const stageTime = index === 0 ? order.createdAt : stageEvent?.updatedAt;
+      const updatedTime = latestCurrentEvent?.updatedAt ?? orderedHistory.at(-1)?.updatedAt ?? order.createdAt;
+      const timeText = isComplete && stageTime
+        ? `Completed · ${date(stageTime)}`
+        : isCurrent
+          ? `Current update · ${date(updatedTime)}`
+          : null;
+      const description = order.status === 'ready_for_dispatch' && index === 4
+        ? 'Your order is packed and waiting to be handed over for delivery.'
+        : stage.description;
+      return <li key={stage.title} className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-4 pb-7 last:pb-0" data-testid={`timeline-stage-${index+1}`}>
+        {index < timelineStages.length - 1 && <span aria-hidden="true" className="absolute bottom-[-16px] left-[15px] top-4 w-px overflow-hidden bg-black/15"><span className={`block h-full w-full origin-top bg-[#D3A300] transition-transform duration-700 ease-out ${index < progressTarget ? 'scale-y-100' : 'scale-y-0'}`}/></span>}
+        <span className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold ring-4 ring-[#FBFAF6] transition-colors duration-300 ${isCurrent ? 'timeline-current bg-[#FFC400] text-[#111]' : isComplete ? 'bg-[#111] text-white' : 'bg-[#e9e6de] text-[#8b8982]'}`} aria-current={isCurrent ? 'step' : undefined}>
+          {isComplete ? <Check className="timeline-check-enter h-4 w-4" strokeWidth={2.7}/> : index + 1}
+        </span>
+        <div className="min-w-0 pt-0.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h3 className={`text-[13px] font-bold ${isCurrent ? 'text-[#111]' : isComplete ? 'text-[#111]' : 'text-[#777]'}`}>{stage.title}</h3>
+            <span className={`text-[8px] font-bold uppercase tracking-[.14em] ${isCurrent ? 'text-[#8A6800]' : isComplete ? 'text-[#777]' : 'text-[#9a978e]'}`}>{isCurrent ? 'Current stage' : isComplete ? 'Complete' : 'Upcoming'}</span>
+          </div>
+          <p className={`mt-1 text-xs leading-5 ${isComplete || isCurrent ? 'text-[#59574f]' : 'text-[#777]'}`}>{description}</p>
+          {timeText && <time className="mt-1.5 block text-[10px] text-[#777]">{timeText}</time>}
+        </div>
+      </li>;
+    })}
+    {cancelled && <li className="mt-2 border-l-2 border-[#a62720] bg-[#f8e9e6] px-4 py-3 text-xs text-[#86281f]" role="status" data-testid="status-order-cancelled">This order was cancelled. Progress before cancellation is shown above.</li>}
+  </ol>;
+}
+
+function StatusActivity({ order }: { order: TrackingOrder }) {
+  const events = [...order.statusHistory].sort((a,b)=>new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime());
+  return <ol className="mt-4 space-y-3" aria-label="Complete order status history">
+    {events.map((event,index)=><li key={`${event.status}-${event.updatedAt}-${index}`} className="flex items-center justify-between gap-3 border-t border-black/[.07] pt-3">
+      <span className="text-xs font-semibold">{labels[event.status]}</span>
+      <time className="shrink-0 text-[10px] text-[#777]">{date(event.updatedAt)}</time>
     </li>)}
   </ol>;
 }
@@ -309,7 +360,11 @@ function TrackPage() {
           <h2 className="mt-6 font-display text-sm font-bold tracking-[.05em]">ORDER PROGRESS</h2><Timeline order={order}/>
         </div>
         {order.deliveryMessage && <div className="border-l-4 border-[#FFC400] bg-[#fff8db] px-5 py-4"><p className="text-[9px] font-bold tracking-[.16em]">A NOTE ABOUT DELIVERY</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{order.deliveryMessage}</p>{order.deliveryMessageUpdatedAt && <p className="mt-2 text-[10px] text-[#777]">Updated {date(order.deliveryMessageUpdatedAt)}</p>}</div>}
-        {!!order.deliveryContacts?.length && <section className="border border-black/10 bg-[#FBFAF6] p-5"><h2 className="font-display text-sm font-bold">DELIVERY CONTACT</h2><p className="mt-1 text-xs text-[#777]">Your delivery contact is ready when your order is out for delivery.</p><div className="mt-4 space-y-3">{order.deliveryContacts.map((person,index)=><div key={`${person.phone}-${index}`} className="flex items-center justify-between gap-3 border-t border-black/10 pt-3 text-sm"><div><p className="font-semibold">{person.name}</p><a className="text-xs text-[#777] underline" href={`tel:${person.phone}`}>{person.phone}</a></div><a href={person.whatsappUrl} target="_blank" rel="noreferrer" className="rounded-sm bg-[#111] px-3 py-2 text-[10px] font-bold tracking-wide text-white">WHATSAPP</a></div>)}</div></section>}
+        {canShowDeliveryContact(order.status) && !!order.deliveryContacts?.length
+          ? <section className="border border-black/10 bg-[#FBFAF6] p-5" data-testid="delivery-contact-visible"><h2 className="font-display text-sm font-bold">DELIVERY CONTACT</h2><p className="mt-1 text-xs text-[#777]">Your order is on its way. Call the delivery person if you need help.</p><div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-black/10 pt-4"><div><p className="text-xs font-semibold">{order.deliveryContacts[0].name}</p><p className="mt-1 text-sm font-bold tracking-wide" data-testid="text-delivery-phone">{order.deliveryContacts[0].phone}</p></div><a href={telephoneHref(order.deliveryContacts[0].phone)} aria-label={`Call delivery person at ${order.deliveryContacts[0].phone}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-sm bg-[#111] px-4 text-[10px] font-bold tracking-[.08em] text-white transition-colors hover:bg-[#303030]" data-testid="link-call-delivery"><PhoneCall className="h-4 w-4"/> CALL DELIVERY PERSON</a></div></section>
+          : !canShowDeliveryContact(order.status) && order.status !== 'delivered' && order.status !== 'cancelled'
+            ? <section className="border border-black/10 bg-[#FBFAF6] p-5" data-testid="delivery-contact-locked"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[#eeeae0]"><LockKeyhole className="h-4 w-4 text-[#777]"/></div><div><h2 className="font-display text-sm font-bold">DELIVERY CONTACT</h2><p className="mt-1 text-xs leading-5 text-[#777]">Delivery contact will be available when your order is out for delivery.</p></div></div></section>
+            : null}
       </section>
       <aside className="space-y-5"><section className="border border-black/10 bg-[#FBFAF6] p-5 md:p-6"><div className="flex items-center justify-between"><h2 className="font-display text-sm font-bold">YOUR ITEMS</h2><span className="text-[10px] text-[#777]">{order.items.reduce((n,x)=>n+x.quantity,0)} PIECES</span></div>
         <div className="mt-4 divide-y divide-black/10">{order.items.map(item=><div key={item.id} className="flex gap-3 py-3"><div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden bg-[#EAE8E0]">{item.imageUrl ? <img src={item.imageUrl} alt={item.productName} className="h-full w-full object-cover"/> : <ShoppingBag className="h-5 w-5 text-black/30"/>}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{item.productName}</p><p className="mt-1 text-xs text-[#777]">Qty {item.quantity} · {money(item.unitPrice)} each</p></div><p className="text-xs font-semibold">{money(item.lineSubtotal)}</p></div>)}</div>
@@ -323,8 +378,11 @@ function TrackPage() {
 
 function LoginPage() {
   const [,setLocation]=useLocation(); const qc=useQueryClient(); const login=useAdminLogin();
+  const session=useGetAdminSession({query:{queryKey:getGetAdminSessionQueryKey(),refetchOnMount:'always',refetchOnWindowFocus:true,refetchOnReconnect:true}});
   const [username,setUsername]=useState('');const [password,setPassword]=useState('');
-  function submit(e: React.FormEvent){e.preventDefault();login.mutate({data:{username,password}},{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetAdminSessionQueryKey()});setLocation('/dashboard');}});}
+  useEffect(()=>{if(session.data?.authenticated)setLocation('/dashboard');},[session.data?.authenticated,setLocation]);
+  function submit(e: React.FormEvent){e.preventDefault();login.mutate({data:{username,password}},{onSuccess:async()=>{await qc.invalidateQueries({queryKey:getGetAdminSessionQueryKey()});}});}
+  if(session.isLoading||session.isFetching)return <PageShell><main className="mx-auto max-w-xl px-5 py-16"><LoadingBlock message="Checking your sign-in"/></main></PageShell>;
   return <PageShell><main className="mx-auto grid min-h-[calc(100dvh-72px)] max-w-6xl items-center gap-12 px-5 py-12 md:grid-cols-[1fr_.85fr] md:px-10">
     <div className="max-w-lg"><p className="text-[10px] font-bold tracking-[.2em] text-[#8A6800]">T-BEE / ORDER DESK</p><h1 className="mt-5 font-display text-5xl font-bold leading-[.98] tracking-[-.08em] md:text-7xl">WELCOME<br/>BACK</h1><p className="mt-6 max-w-sm text-sm leading-6 text-[#777]">Sign in to continue.</p></div>
     <form onSubmit={submit} className="border border-black/10 bg-[#FBFAF6] p-6 md:p-9"><div className="mb-8 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center bg-[#FFC400]"><LockKeyhole className="h-5 w-5"/></div><div><p className="font-display text-lg font-bold">Sign in</p><p className="text-xs text-[#777]">Sign in to continue.</p></div></div>
@@ -335,9 +393,9 @@ function LoginPage() {
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const session=useGetAdminSession();const [,setLocation]=useLocation();
+  const session=useGetAdminSession({query:{queryKey:getGetAdminSessionQueryKey(),refetchOnMount:'always',refetchOnWindowFocus:true,refetchOnReconnect:true,refetchInterval:60_000}});const [,setLocation]=useLocation();
   useEffect(()=>{if(session.data && !session.data.authenticated && !session.isFetching)setLocation('/login');},[session.data,session.isFetching,setLocation]);
-  if(session.isLoading || session.isFetching)return <PageShell><main className="mx-auto max-w-7xl px-5 py-12"><LoadingBlock message="Checking access"/></main></PageShell>;
+  if(session.isLoading || (!session.data && session.isFetching) || (session.data && !session.data.authenticated && session.isFetching))return <PageShell><main className="mx-auto max-w-7xl px-5 py-12"><LoadingBlock message="Checking access"/></main></PageShell>;
   if(session.isError){return <PageShell><main className="mx-auto max-w-xl px-5 py-20 text-center"><ShieldCheck className="mx-auto h-8 w-8"/><h1 className="mt-4 font-display text-2xl font-bold">Access check unavailable</h1><p className="mt-2 text-sm text-[#777]">{errorText(session.error)}</p><Button className="mt-5" onClick={()=>session.refetch()} testId="button-retry-session">TRY AGAIN</Button></main></PageShell>;}
   if(!session.data?.authenticated)return null;
   return <>{children}</>;
@@ -345,7 +403,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 function AdminFrame({ children, title, kicker, action }: {children:React.ReactNode;title:string;kicker:string;action?:React.ReactNode}) {
   const logout=useAdminLogout();const qc=useQueryClient();const [,setLocation]=useLocation();
-  return <PageShell><main className="mx-auto max-w-7xl px-5 pb-16 pt-8 md:px-10 md:pt-12"><div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-black/15 pb-6"><div><p className="text-[10px] font-bold tracking-[.18em] text-[#8A6800]">{kicker}</p><h1 className="mt-2 font-display text-4xl font-bold tracking-[-.07em] md:text-5xl">{title}</h1></div><div className="flex gap-2">{action}<Button variant="line" onClick={()=>logout.mutate(undefined,{onSuccess:()=>{qc.invalidateQueries({queryKey:getGetAdminSessionQueryKey()});setLocation('/login');}})} disabled={logout.isPending} testId="button-logout"><LogOut className="h-4 w-4"/> SIGN OUT</Button></div></div>{children}</main></PageShell>;
+  return <PageShell><main className="mx-auto max-w-7xl px-5 pb-16 pt-8 md:px-10 md:pt-12"><div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-black/15 pb-6"><div><p className="text-[10px] font-bold tracking-[.18em] text-[#8A6800]">{kicker}</p><h1 className="mt-2 font-display text-4xl font-bold tracking-[-.07em] md:text-5xl">{title}</h1></div><div className="flex gap-2">{action}<Button variant="line" onClick={()=>logout.mutate(undefined,{onSuccess:()=>{qc.clear();setLocation('/login');}})} disabled={logout.isPending} testId="button-logout"><LogOut className="h-4 w-4"/> SIGN OUT</Button></div></div>{children}</main></PageShell>;
 }
 
 function StatCard({ label, value, detail, dark = false }: {label:string;value:string|number;detail:string;dark?:boolean}) {
@@ -353,10 +411,17 @@ function StatCard({ label, value, detail, dark = false }: {label:string;value:st
 }
 
 function DashboardPage() {
-  const dashboard=useGetAdminDashboard(); const [search,setSearch]=useState(''); const [status,setStatus]=useState('');
+  const dashboard=useGetAdminDashboard({query:{queryKey:getGetAdminDashboardQueryKey(),refetchInterval:15000,refetchOnWindowFocus:true}});
+  const [search,setSearch]=useState(''); const [status,setStatus]=useState('');
+  const [section,setSection]=useState<'received'|'completed'>('received');
   const params=useMemo(()=>({...(search.trim()?{search:search.trim()}:{}),...(status?{status:status as OrderStatus}:{})}),[search,status]);
-  const list=useListAdminOrders(params,{query:{queryKey:getListAdminOrdersQueryKey(params)}});
+  const list=useListAdminOrders(params,{query:{queryKey:getListAdminOrdersQueryKey(params),refetchInterval:15000,refetchOnWindowFocus:true}});
   const [,setLocation]=useLocation();
+  const orderSections=partitionOrders(list.data??[]);
+  const ordersForSection=section==='completed'?orderSections.completed:orderSections.received;
+  const receivedCount=dashboard.data?Math.max(0,dashboard.data.totalOrders-dashboard.data.delivered):'—';
+  const completedCount=dashboard.data?.delivered??'—';
+  const visibleStatuses=section==='completed'?(['delivered'] as OrderStatus[]):statuses.filter(value=>value!=='delivered');
   return <AdminFrame kicker="T-BEE / ORDER DESK" title="Order overview" action={<Button onClick={()=>setLocation('/create-order')} testId="button-create-order"><Package className="h-4 w-4"/> NEW ORDER</Button>}>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {dashboard.isLoading ? Array.from({length:6},(_,i)=><div key={i} className="h-32 animate-pulse bg-black/[.06]"/>) : dashboard.isError ? <div className="col-span-full border border-red-300 bg-red-50 p-4 text-sm text-red-800">Dashboard unavailable. <button className="ml-2 underline" onClick={()=>dashboard.refetch()}>Retry</button></div> : <>
@@ -369,11 +434,25 @@ function DashboardPage() {
       </>}
     </div>
     <section className="mt-10">
-      <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold tracking-[.16em] text-[#777]">LIVE REGISTER</p><h2 className="mt-1 font-display text-2xl font-bold tracking-[-.05em]">Orders</h2></div>
-        <div className="flex flex-col gap-2 sm:flex-row"><label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#777]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or tracking ID" className="h-11 w-full border border-black/15 bg-[#FBFAF6] pl-9 pr-3 text-sm outline-none focus:border-black sm:w-64" data-testid="input-order-search"/></label><select value={status} onChange={e=>setStatus(e.target.value)} className="h-11 border border-black/15 bg-[#FBFAF6] px-3 text-sm outline-none focus:border-black" aria-label="Filter orders by status" data-testid="select-order-status"><option value="">All statuses</option>{statuses.map(s=><option value={s} key={s}>{labels[s]}</option>)}</select></div>
+      <div role="tablist" aria-label="Order sections" className="mb-6 grid grid-cols-2 border-b border-black/15" data-testid="order-section-tabs">
+        <button type="button" role="tab" aria-selected={section==='received'} onClick={()=>{setSection('received');setStatus('');}} className={`flex min-h-14 items-center justify-center gap-2 border-b-2 px-3 text-[10px] font-bold tracking-[.08em] transition-colors sm:text-xs ${section==='received'?'border-[#B78900] text-[#111]':'border-transparent text-[#777] hover:text-[#111]'}`} data-testid="tab-orders-received">ORDERS RECEIVED <span className={`rounded-full px-2 py-1 text-[10px] ${section==='received'?'bg-[#FFC400] text-[#111]':'bg-black/[.06]'}`}>{receivedCount}</span></button>
+        <button type="button" role="tab" aria-selected={section==='completed'} onClick={()=>{setSection('completed');setStatus('');}} className={`flex min-h-14 items-center justify-center gap-2 border-b-2 px-3 text-[10px] font-bold tracking-[.08em] transition-colors sm:text-xs ${section==='completed'?'border-[#B78900] text-[#111]':'border-transparent text-[#777] hover:text-[#111]'}`} data-testid="tab-completed-orders">COMPLETED ORDERS <span className={`rounded-full px-2 py-1 text-[10px] ${section==='completed'?'bg-[#FFC400] text-[#111]':'bg-black/[.06]'}`}>{completedCount}</span></button>
+      </div>
+      <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold tracking-[.16em] text-[#777]">{section==='received'?'LIVE REGISTER':'DELIVERY ARCHIVE'}</p><h2 className="mt-1 font-display text-2xl font-bold tracking-[-.05em]">{section==='received'?'Orders Received':'Completed Orders'}</h2><p className="mt-1 text-xs text-[#777]">{section==='received'?'Orders not yet delivered':'Delivered orders kept for reference'}</p></div>
+        <div className="flex flex-col gap-2 sm:flex-row"><label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#777]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or tracking ID" className="h-11 w-full border border-black/15 bg-[#FBFAF6] pl-9 pr-3 text-sm outline-none focus:border-black sm:w-64" data-testid="input-order-search"/></label><select value={status} onChange={e=>setStatus(e.target.value)} className="h-11 border border-black/15 bg-[#FBFAF6] px-3 text-sm outline-none focus:border-black" aria-label="Filter orders by status" data-testid="select-order-status"><option value="">All statuses</option>{visibleStatuses.map(s=><option value={s} key={s}>{labels[s]}</option>)}</select></div>
       </div>
       <div className="overflow-hidden border border-black/10 bg-[#FBFAF6]">
-        {list.isLoading ? <div className="space-y-2 p-5">{[1,2,3].map(x=><div key={x} className="h-14 animate-pulse bg-black/[.05]"/>)}</div> : list.isError ? <div className="p-8 text-center"><p className="text-sm font-semibold">Orders didn’t load.</p><p className="mt-1 text-xs text-[#777]">{errorText(list.error)}</p><Button className="mt-4" onClick={()=>list.refetch()} testId="button-retry-orders">RETRY</Button></div> : !(list.data?.length) ? <div className="p-12 text-center"><Package className="mx-auto h-8 w-8 text-[#999]"/><p className="mt-3 font-display text-lg font-bold">Nothing in this view</p><p className="mt-1 text-xs text-[#777]">Try another search or create a new order.</p><Button className="mt-4" onClick={()=>setLocation('/create-order')}>CREATE ORDER</Button></div> : <div className="overflow-x-auto"><table className="w-full min-w-[690px] text-left"><thead className="bg-[#eeeae0] text-[9px] font-bold tracking-[.14em] text-[#777]"><tr><th className="px-5 py-3">ORDER / CUSTOMER</th><th className="px-4 py-3">PLACED</th><th className="px-4 py-3">STATUS</th><th className="px-4 py-3 text-center">ITEMS</th><th className="px-5 py-3 text-right">TOTAL</th><th className="px-3 py-3"/></tr></thead><tbody className="divide-y divide-black/[.08]">{list.data.map((order:AdminOrderSummary)=><tr key={order.trackingId} className="transition-colors hover:bg-[#FFC400]/10" data-testid={`row-order-${order.trackingId}`}><td className="px-5 py-4"><Link href={`/orders/${order.trackingId}`} className="font-display text-[13px] font-bold underline decoration-[#FFC400] decoration-2 underline-offset-2">{order.trackingId}</Link><p className="mt-1 text-xs">{order.customerName}</p></td><td className="px-4 py-4 text-xs text-[#777]">{date(order.createdAt)}</td><td className="px-4 py-4"><StatusPill status={order.status}/></td><td className="px-4 py-4 text-center text-xs">{order.itemCount}</td><td className="px-5 py-4 text-right text-xs font-bold">{money(order.finalTotal)}</td><td className="px-3 py-4"><Link href={`/orders/${order.trackingId}`} aria-label={`Open order ${order.trackingId}`} className="inline-flex h-8 w-8 items-center justify-center hover:bg-[#FFC400]" data-testid={`link-order-${order.trackingId}`}><ArrowUpRight className="h-4 w-4"/></Link></td></tr>)}</tbody></table></div>}
+        {list.isLoading ? <div className="space-y-2 p-5">{[1,2,3].map(x=><div key={x} className="h-14 animate-pulse bg-black/[.05]"/> )}</div>
+          : list.isError ? <div className="p-8 text-center"><p className="text-sm font-semibold">Orders didn’t load.</p><p className="mt-1 text-xs text-[#777]">{errorText(list.error)}</p><Button className="mt-4" onClick={()=>list.refetch()} testId="button-retry-orders">RETRY</Button></div>
+          : !ordersForSection.length ? <div className="p-12 text-center"><Package className="mx-auto h-8 w-8 text-[#999]"/><p className="mt-3 font-display text-lg font-bold">No {section==='received'?'received':'completed'} orders in this view</p><p className="mt-1 text-xs text-[#777]">Try another search or status filter.</p>{section==='received'&&<Button className="mt-4" onClick={()=>setLocation('/create-order')}>CREATE ORDER</Button>}</div>
+          : <>
+            <div className="space-y-3 p-3 md:hidden">{ordersForSection.map(order=><article key={order.trackingId} className="border border-black/10 p-4" data-testid={`card-order-${order.trackingId}`}>
+              <div className="flex items-start justify-between gap-3"><div className="min-w-0"><Link href={`/orders/${order.trackingId}`} className="font-display text-sm font-bold underline decoration-[#FFC400] decoration-2 underline-offset-2">{order.trackingId}</Link><p className="mt-1 truncate text-sm">{order.customerName}</p></div><StatusPill status={order.status}/></div>
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-black/10 pt-3 text-xs"><div><dt className="text-[9px] font-bold tracking-[.12em] text-[#777]">PLACED</dt><dd className="mt-1">{date(order.createdAt)}</dd></div><div><dt className="text-[9px] font-bold tracking-[.12em] text-[#777]">TOTAL</dt><dd className="mt-1 font-bold">{money(order.finalTotal)}</dd></div><div><dt className="text-[9px] font-bold tracking-[.12em] text-[#777]">ITEMS</dt><dd className="mt-1">{order.itemCount}</dd></div></dl>
+              <Link href={`/orders/${order.trackingId}`} className="mt-3 inline-flex min-h-10 items-center gap-2 text-[10px] font-bold tracking-[.1em] underline decoration-[#FFC400] decoration-2 underline-offset-4" data-testid={`link-open-order-${order.trackingId}`}>OPEN ORDER <ArrowUpRight className="h-4 w-4"/></Link>
+            </article>)}</div>
+            <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[690px] text-left"><thead className="bg-[#eeeae0] text-[9px] font-bold tracking-[.14em] text-[#777]"><tr><th className="px-5 py-3">ORDER / CUSTOMER</th><th className="px-4 py-3">PLACED</th><th className="px-4 py-3">STATUS</th><th className="px-4 py-3 text-center">ITEMS</th><th className="px-5 py-3 text-right">TOTAL</th><th className="px-3 py-3"/></tr></thead><tbody className="divide-y divide-black/[.08]">{ordersForSection.map((order:AdminOrderSummary)=><tr key={order.trackingId} className="transition-colors hover:bg-[#FFC400]/10" data-testid={`row-order-${order.trackingId}`}><td className="px-5 py-4"><Link href={`/orders/${order.trackingId}`} className="font-display text-[13px] font-bold underline decoration-[#FFC400] decoration-2 underline-offset-2">{order.trackingId}</Link><p className="mt-1 text-xs">{order.customerName}</p></td><td className="px-4 py-4 text-xs text-[#777]">{date(order.createdAt)}</td><td className="px-4 py-4"><StatusPill status={order.status}/></td><td className="px-4 py-4 text-center text-xs">{order.itemCount}</td><td className="px-5 py-4 text-right text-xs font-bold">{money(order.finalTotal)}</td><td className="px-3 py-4"><Link href={`/orders/${order.trackingId}`} aria-label={`Open order ${order.trackingId}`} className="inline-flex h-8 w-8 items-center justify-center hover:bg-[#FFC400]" data-testid={`link-order-${order.trackingId}`}><ArrowUpRight className="h-4 w-4"/></Link></td></tr>)}</tbody></table></div>
+          </>}
       </div>
     </section>
   </AdminFrame>;
@@ -429,9 +508,9 @@ function OrderEditor({ edit=false }: {edit?:boolean}) {
 }
 
 function OrderDetailPage() {
-  const {trackingId=''}=useParams<{trackingId:string}>();const orderQuery=useGetAdminOrder(trackingId,{query:{queryKey:getGetAdminOrderQueryKey(trackingId)}});const order=orderQuery.data as AdminOrder|undefined;
-  const statusUpdate=useUpdateAdminOrderStatus();const archive=useDeleteAdminOrder();const qc=useQueryClient();const [,setLocation]=useLocation();const [status,setStatus]=useState<OrderStatus>('pending');
-  useEffect(()=>{if(order)setStatus(order.status);},[order]);
+  const {trackingId=''}=useParams<{trackingId:string}>();const orderQuery=useGetAdminOrder(trackingId,{query:{queryKey:getGetAdminOrderQueryKey(trackingId),refetchInterval:15000,refetchOnWindowFocus:true}});const order=orderQuery.data as AdminOrder|undefined;
+  const statusUpdate=useUpdateAdminOrderStatus();const archive=useDeleteAdminOrder();const qc=useQueryClient();const [,setLocation]=useLocation();const [status,setStatus]=useState<OrderStatus|null>(null);
+  useEffect(()=>{setStatus(null);},[trackingId]);
   async function refresh(){await Promise.all([qc.invalidateQueries({queryKey:getGetAdminOrderQueryKey(trackingId)}),qc.invalidateQueries({queryKey:getGetAdminDashboardQueryKey()}),qc.invalidateQueries({queryKey:getListAdminOrdersQueryKey()})]);}
   if(orderQuery.isLoading)return <AdminFrame kicker="ORDER RECORD" title="Loading"><LoadingBlock/></AdminFrame>;
   if(orderQuery.isError||!order)return <AdminFrame kicker="ORDER RECORD" title="Order unavailable"><p className="text-sm">{orderQuery.error?errorText(orderQuery.error):'No order found.'}</p><Button className="mt-4" onClick={()=>orderQuery.refetch()}>RETRY</Button></AdminFrame>;
@@ -439,8 +518,8 @@ function OrderDetailPage() {
     <div className="grid gap-7 lg:grid-cols-[1fr_360px]"><section className="space-y-5">
       <div className="border border-black/10 bg-[#FBFAF6] p-5 md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-bold tracking-[.15em] text-[#777]">CUSTOMER</p><h2 className="mt-1 font-display text-2xl font-bold">{order.customerName}</h2><a className="mt-1 inline-block text-sm underline decoration-[#FFC400] decoration-2 underline-offset-2" href={`tel:${order.customerPhone}`}>{order.customerPhone}</a></div><StatusPill status={order.status}/></div><div className="mt-6 grid gap-4 border-t border-black/10 pt-5 sm:grid-cols-2"><div><p className="text-[9px] font-bold tracking-[.13em] text-[#777]">DELIVER TO</p><p className="mt-1 whitespace-pre-wrap text-sm">{order.deliveryAddress}</p>{order.landmark&&<p className="mt-1 text-xs text-[#777]">Near {order.landmark}</p>}</div><div><p className="text-[9px] font-bold tracking-[.13em] text-[#777]">PLACED</p><p className="mt-1 text-sm">{date(order.createdAt)}</p><p className="mt-2 text-xs text-[#777]">{order.deliveryOption==='birtamode'?'Birtamode delivery':'Outside Birtamode'}</p></div></div></div>
       <div className="border border-black/10 bg-[#FBFAF6] p-5 md:p-7"><h2 className="font-display text-lg font-bold">Product lines</h2><div className="mt-3 divide-y divide-black/10">{order.items.map(item=><div key={item.id} className="flex items-center gap-3 py-3">{item.imageUrl?<img src={item.imageUrl} alt={item.productName} className="h-14 w-14 object-cover"/>:<div className="flex h-14 w-14 items-center justify-center bg-[#EAE8E0]"><ShoppingBag className="h-5 w-5 text-black/30"/></div>}<div className="flex-1"><p className="font-semibold">{item.productName}</p><p className="text-xs text-[#777]">{item.quantity} × {money(item.unitPrice)}</p></div><p className="text-sm font-bold">{money(item.lineSubtotal)}</p></div>)}</div><div className="mt-4 border-t border-black/15 pt-4"><p className="whitespace-pre-wrap text-sm">{order.deliveryMessage||'No delivery note.'}</p></div></div>
-      <section className="border border-black/10 bg-[#FBFAF6] p-5 md:p-7"><h2 className="font-display text-lg font-bold">Status history</h2><Timeline order={order}/></section>
-    </section><aside className="space-y-5"><section className="border border-black/10 bg-[#FBFAF6] p-5"><p className="text-[9px] font-bold tracking-[.15em] text-[#777]">UPDATE STATUS</p><select value={status} onChange={e=>setStatus(e.target.value as OrderStatus)} className="mt-3 w-full border border-black/15 bg-[#F5F3ED] p-3 text-sm">{statuses.map(s=><option value={s} key={s}>{labels[s]}</option>)}</select><Button className="mt-3 w-full" disabled={status===order.status||statusUpdate.isPending} onClick={()=>statusUpdate.mutate({trackingId,data:{status}},{onSuccess:refresh})} testId="button-update-status">{statusUpdate.isPending?<LoaderCircle className="h-4 w-4 animate-spin"/>:'UPDATE STATUS'}</Button>{statusUpdate.isError&&<p className="mt-2 text-xs text-red-700">{errorText(statusUpdate.error)}</p>}</section>
+       <section className="border border-black/10 bg-[#FBFAF6] p-5 md:p-7"><h2 className="font-display text-lg font-bold">Delivery milestones</h2><Timeline order={order}/><div className="mt-7 border-t border-black/10 pt-5"><h3 className="text-[9px] font-bold tracking-[.15em] text-[#777]">FULL STATUS ACTIVITY</h3><StatusActivity order={order}/></div></section>
+    </section><aside className="space-y-5"><section className="border border-black/10 bg-[#FBFAF6] p-5"><p className="text-[9px] font-bold tracking-[.15em] text-[#777]">UPDATE STATUS</p><select value={status??order.status} onChange={e=>setStatus(e.target.value as OrderStatus)} className="mt-3 w-full border border-black/15 bg-[#F5F3ED] p-3 text-sm">{statuses.map(s=><option value={s} key={s}>{labels[s]}</option>)}</select><Button className="mt-3 w-full" disabled={(status??order.status)===order.status||statusUpdate.isPending} onClick={()=>statusUpdate.mutate({trackingId,data:{status:status??order.status}},{onSuccess:async()=>{setStatus(null);await refresh();}})} testId="button-update-status">{statusUpdate.isPending?<LoaderCircle className="h-4 w-4 animate-spin"/>:'UPDATE STATUS'}</Button>{statusUpdate.isError&&<p className="mt-2 text-xs text-red-700">{errorText(statusUpdate.error)}</p>}</section>
       <Invoice order={order} onDownload={()=>downloadInvoice(order)}/>
       <Button variant="danger" className="w-full" disabled={archive.isPending} onClick={()=>{if(window.confirm(`Archive order ${order.trackingId}?`))archive.mutate({trackingId},{onSuccess:async()=>{await refresh();setLocation('/dashboard');}});}} testId="button-archive-order">{archive.isPending?<LoaderCircle className="h-4 w-4 animate-spin"/>:<Package className="h-4 w-4"/>} ARCHIVE ORDER</Button>{archive.isError&&<p className="text-xs text-red-700">{errorText(archive.error)}</p>}
     </aside></div>
